@@ -136,6 +136,7 @@ class SimpleUnet(nn.Module):
 
 if __name__ == '__main__':
     model = SimpleUnet(3)
-    logger = SummaryWriter('../logs/network')
-    logger.add_graph(model, [torch.randn([8, 3, 64, 64]), torch.full((8,), 6)])
-    logger.close()
+    print(model)
+    # logger = SummaryWriter('../logs/network')
+    # logger.add_graph(model, [torch.randn([8, 3, 64, 64]), torch.full((8,), 6)])
+    # logger.close()

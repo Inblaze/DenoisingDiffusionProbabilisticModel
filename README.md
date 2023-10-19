@@ -14,4 +14,4 @@ timestep scheduler写了2个，参考了Improved DDPM那篇论文写了cosine sc
 
 ### Timestep Position Embedding
 
-PE函数中的i代表的是channel的编号，也就是说同一个图像中的同一个channel的所有像素嵌入的值是一样的
+PE函数中的i代表的是channel的编号（一个channel对应一个词，一个channel的二维向量对应一个词向量），也就是说同一个图像中的同一个channel的所有像素嵌入的值是一样的
