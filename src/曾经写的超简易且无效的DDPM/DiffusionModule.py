@@ -15,7 +15,7 @@ def get_dataloader(data_path, img_size=64, batchsize=128):
     return DataLoader(dataset, batchsize, True, drop_last=True)
 
 
-class DiffusionModule:
+class DiffusionModule():
     def __init__(self):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -54,17 +54,26 @@ class DiffusionModule:
 
 if __name__ == '__main__':
     dpath = '../datasets/Flower102'
-    dloader = get_dataloader(dpath)
-    log_path = '../logs/Flower102'
+    dloader = get_dataloader(dpath, batchsize=8)
+    log_path = '../logs/DiffusionModule'
     logger = SummaryWriter(log_path)
     T = 300
-    num_of_phases = 10
+    num_of_phases = 30
     step_size = int(T / num_of_phases)
     imgs = next(iter(dloader))[0]
-    logger.add_images('Diffusion Process', imgs, 0)
+    logger.add_images('Linear Scheduler', imgs, 0)
     my_diffusion_module = DiffusionModule()
     itr_imgs = imgs
     for i in range(9, T + 1, step_size):
+        itr_imgs, noise = my_diffusion_module(itr_imgs, torch.full((8,), i), 'linear', T)
+        logger.add_images('Linear Scheduler', itr_imgs, i + 1)
+
+    dloader = get_dataloader(dpath, batchsize=8)
+    imgs = next(iter(dloader))[0]
+    logger.add_images('Cosine Scheduler', imgs, 0)
+    itr_imgs = imgs
+    for i in range(9, T + 1, step_size):
         itr_imgs, noise = my_diffusion_module(itr_imgs, torch.full((8,), i), 'cosine', T)
-        logger.add_images('Diffusion Process', itr_imgs, i + 1)
+        logger.add_images('Cosine Scheduler', itr_imgs, i + 1)
+
     logger.close()

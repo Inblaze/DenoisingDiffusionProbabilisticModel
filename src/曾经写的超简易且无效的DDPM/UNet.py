@@ -109,10 +109,10 @@ class SimpleUnet(nn.Module):
             UpSample(512, 128, 512),  # 256 + 256 -> 256 -> 128
             UpSample(256, 64, 256),  # 128 + 128 -> 128 -> 64
         ])
-        self.output = nn.Sequential(  # 64 + 64 -> 64 -> img_channels
+        self.output = nn.Sequential(  # 64 + 64 -> 64 -> 64 -> img_channels
             nn.Conv2d(128, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
             nn.Conv2d(64, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
-            nn.Conv2d(64, img_channels, 3, padding=1)
+            nn.Conv2d(64, img_channels, 3, padding=1), nn.BatchNorm2d(img_channels)
         )
 
     def forward(self, x, t):
@@ -136,6 +136,7 @@ class SimpleUnet(nn.Module):
 
 if __name__ == '__main__':
     model = SimpleUnet(3)
-    logger = SummaryWriter('../logs/network')
-    logger.add_graph(model, [torch.randn([8, 3, 64, 64]), torch.full((8,), 6)])
-    logger.close()
+    print(model)
+    # logger = SummaryWriter('../logs/network')
+    # logger.add_graph(model, [torch.randn([8, 3, 64, 64]), torch.full((8,), 6)])
+    # logger.close()
