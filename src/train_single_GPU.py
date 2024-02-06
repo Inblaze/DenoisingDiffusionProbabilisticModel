@@ -27,7 +27,7 @@ def train(params:argparse.Namespace):
     )
     betas = get_betas(params.betamode, params.T)
     diffusion = GaussianDiffusion(
-        dty = params.dtype,
+        dtp = params.dtype,
         model = net,
         betas = betas,
         w = params.w,
@@ -38,10 +38,10 @@ def train(params:argparse.Namespace):
         lr = params.lr,
         weight_decay = 1e-4
     )
-    for epc in tqdm(range(params.epoch), desc='Epoch'):
+    for epc in tqdm(range(params.epoch), desc='Epoch', position=0, leave=False, dynamic_ncols=True):
         diffusion.model.train()
         tot_loss = 0
-        for img, lab in tqdm(dataloader, desc='Processing'):
+        for img, lab in tqdm(dataloader, desc='Processing', position=1, leave=False, dynamic_ncols=True):
             optimizer.zero_grad()
             x_0 = img.to(device)
             lable = lab.to(device)
@@ -54,7 +54,7 @@ def train(params:argparse.Namespace):
             tqdm.write(f"Epoch {epc} Loss: {tot_loss}")
         if epc % 100 == 99:
             now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-            mpath = os.path.join(params.modeldir, f'{now}.pt')
+            mpath = os.path.join(params.modeldir, f'{epc}_{now}.pt')
             torch.save({
                 'epoch': epc,
                 'model': diffusion.model.state_dict(),
@@ -78,7 +78,7 @@ def main():
     parser.add_argument('--lr', type=float, default=2e-4, help='learning rate')
     parser.add_argument('--epoch', type=int, default=1000, help='epoch')
     parser.add_argument('--datapath', type=str, default='../datasets', help='data path')
-    parser.add_argument('--modeldir', type=str, default='../pth', help='saved-model path')
+    parser.add_argument('--modeldir', type=str, default='../pt', help='saved-model path')
     parser.add_argument('--uncondrate', type=float, default=0.1, help='rate of training without condition for classifier-free guidance')
     # diffusion params
     parser.add_argument('--dtype', default=torch.float32)

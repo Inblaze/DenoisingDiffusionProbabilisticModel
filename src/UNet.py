@@ -41,7 +41,7 @@ class ConditionalEmbedding(nn.Module):
         """
         :param c: 1-D Tensor of N indices, one per batch
         """
-        return self.conditional_emb_seq(c)
+        return self.conditional_emb_seq(c) 
 
 class DownSample(nn.Module):
     def __init__(self, in_ch:int, out_ch:int, use_conv=True):
@@ -91,7 +91,7 @@ class ResidualBlock(BlockWithEmbedment):
         self.temb_ch, self.cemb_ch = temb_ch, cemb_ch
         self.droprate = droprate
         self.block1 = nn.Sequential(
-            nn.GroupNorm(32, out_ch),
+            nn.GroupNorm(32, in_ch),
             nn.SiLU(),
             nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1)
         )
@@ -221,7 +221,7 @@ class UNet(nn.Module):
         for block in self.downblocks:
             latent = block(latent, temb, cemb)
             latents.append(latent)
-        latent = self.middle_blocks(latent)
+        latent = self.middle_blocks(latent, temb, cemb)
         for block in self.upblocks:
             latent = torch.cat([latent, latents.pop()], dim=1)
             latent = block(latent, temb, cemb)

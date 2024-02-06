@@ -6,10 +6,10 @@ import torch.nn.functional as F
 
 class GaussianDiffusion(nn.Module):
     def __init__(self, dtp:torch.dtype, model, betas:np.ndarray, w:float, dvc:torch.device):
-        super.__init__()
+        super().__init__()
         self.dtp = dtp
-        self.model = model
-        self.betas = torch.tensor(betas, dtype=dtp)
+        self.model = model.to(dvc)
+        self.betas = torch.tensor(betas, dtype=dtp, device=dvc)
         self.w = w
         self.dvc = dvc
         self.T = len(betas)
@@ -26,8 +26,9 @@ class GaussianDiffusion(nn.Module):
     @staticmethod
     def _extract(arr:torch.Tensor, t:torch.Tensor, x_shape:tuple) -> torch.Tensor:
        assert x_shape[0] == t.shape[0]
-       new_shape = torch.ones_like(torch.Tensor(x_shape))
+       new_shape = torch.ones_like(torch.tensor(x_shape))
        new_shape[0] = x_shape[0]
+       new_shape = new_shape.tolist()
        chosen = arr[t]
        chosen = chosen.to(t.device)
        return chosen.reshape(new_shape)
@@ -38,7 +39,8 @@ class GaussianDiffusion(nn.Module):
         """
         eps = torch.randn_like(x_0, requires_grad=False)
         x_t = self._extract(self.sqrt_one_minus_alpha_bar, t, x_0.shape) * eps \
-             + self._extract(self.sqrt_alpha_bar, t, x_0.shape) * x_0, eps
+             + self._extract(self.sqrt_alpha_bar, t, x_0.shape) * x_0
+        return x_t, eps
         
     def p_mean_variance(self, x_t:torch.Tensor, t:torch.Tensor, c:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
