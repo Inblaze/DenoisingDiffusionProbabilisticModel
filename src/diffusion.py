@@ -22,6 +22,8 @@ class GaussianDiffusion(nn.Module):
         self.one_minus_alpha = 1 - self.alphas
         self.alpha_bar_prev = F.pad(self.alpha_bar[:-1], [1,0], 'constant', self.alpha_bar[0])
         self.one_minus_alpha_bar_prev = 1 - self.alpha_bar_prev
+        self.tilde_betas = self.betas * self.one_minus_alphas_bar_prev / self.one_minus_alphas_bar
+        self.vars = torch.cat((self.tilde_betas[1:2], self.betas[1:]), 0)
 
     @staticmethod
     def _extract(arr:torch.Tensor, t:torch.Tensor, x_shape:tuple) -> torch.Tensor:
@@ -56,9 +58,7 @@ class GaussianDiffusion(nn.Module):
                 * (x_t - (self._extract(self.one_minus_alpha, t, x_t.shape) \
                 / self._extract(self.sqrt_one_minus_alpha_bar, t, x_t.shape)) * eps)
         # variance
-        variance = self._extract(self.betas, t, x_t.shape) \
-                    * self._extract(self.one_minus_alpha_bar_prev, t, x_t.shape) \
-                    / self._extract(self.one_minus_alpha_bar, t, x_t.shape)
+        variance = self._extract(self.vars, t, x_t.shape)
         return mean, variance
     
     def p_sample(self, x_t:torch.Tensor, t:torch.Tensor, c:torch.Tensor) -> torch.Tensor:
@@ -69,7 +69,7 @@ class GaussianDiffusion(nn.Module):
         mean, variance = self.p_mean_variance(x_t, t, c)
         z = torch.randn_like(x_t)
         z[t <= 0] = 0
-        return mean + variance * z
+        return mean + torch.sqrt(variance) * z
     
     def p_sample_loop(self, x_shape:tuple, c:torch.Tensor) -> torch.Tensor:
         x_t = torch.randn(x_shape, device=self.dvc)
@@ -87,8 +87,8 @@ class GaussianDiffusion(nn.Module):
         """
         # variance
         variance = eta * \
-                torch.sqrt(self._extract(self.one_minus_alpha_bar, t_prev, x_t.shape) / self._extract(self.one_minus_alpha_bar, t, x_t.shape)) * \
-                torch.sqrt(self._extract(self.one_minus_alpha_bar, t, x_t.shape) / self._extract(self.alpha_bar, t_prev, x_t.shape))
+                torch.sqrt(self._extract(self.one_minus_alpha_bar, t_prev, x_t.shape) / self._extract(self.one_minus_alpha_bar, t, x_t.shape) * \
+                (1 - self._extract(self.alpha_bar, t, x_t.shape) / self._extract(self.alpha_bar, t_prev, x_t.shape)))
         # mean
         eps_cond = self.model(x_t, t, c)
         c = torch.zeros_like(c, device=self.dvc)
@@ -108,7 +108,7 @@ class GaussianDiffusion(nn.Module):
         mean, variance = self.ddim_p_mean_variance(x_t, t, t_prev, eta, c)
         z = torch.randn_like(x_t)
         z[t <= 0] = 0
-        return mean + variance * z
+        return mean + torch.sqrt(variance) * z
     
     def ddim_p_sample_loop(self, x_shape:tuple, num_steps:int, eta:float, tau_mode:str, c:torch.Tensor) -> torch.Tensor:
         assert tau_mode in set(['linear', 'quadratic'])

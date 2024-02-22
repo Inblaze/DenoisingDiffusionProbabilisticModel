@@ -1,4 +1,5 @@
 import torch
+from torchvision.utils import save_image
 import argparse
 import numpy as np
 import torch.optim as optim
@@ -20,7 +21,7 @@ def train(params:argparse.Namespace):
         ch_mul = params.chmul,
         num_res_blocks = params.numres,
         cdim = params.cdim,
-        num_lables = params.numlable,
+        num_labels = params.numlabel,
         use_conv = params.useconv,
         droprate = params.droprate,
         dtype = params.dtype
@@ -44,17 +45,32 @@ def train(params:argparse.Namespace):
         for img, lab in tqdm(dataloader, desc='Processing', position=1, leave=False, dynamic_ncols=True):
             optimizer.zero_grad()
             x_0 = img.to(device)
-            lable = lab.to(device)
-            lable[np.where(np.random.rand(params.batchsize)<params.uncondrate)] = 0
-            loss = diffusion.train_loss(x_0, lable)
+            label = lab.to(device)
+            label[np.where(np.random.rand(params.batchsize)<params.uncondrate)] = 0
+            loss = diffusion.train_loss(x_0, label)
             loss.backward()
             optimizer.step()
             tot_loss += loss.item()
-        if epc % 10 == 9:
-            tqdm.write(f"Epoch {epc} Loss: {tot_loss}")
-        if epc % 100 == 99:
+        if (epc + 1) % 10 == 0:
+            tqdm.write(f"Epoch {epc + 1} Loss: {tot_loss}")
+        if (epc + 1) % 100 == 0:
+            diffusion.model.eval()
             now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-            mpath = os.path.join(params.modeldir, f'{epc}_{now}.pt')
+            with torch.no_grad():
+                label = torch.ones(params.numlabel, params.numgen).type(torch.long) \
+                    * torch.arange(0, params.numlabel).reshape(-1, 1)
+                label = label.reshape(-1, 1).squeeze()
+                label = label.to(device)
+                genshape = (params.numlabel * params.numgen, 3, 32, 32)
+                if params.ddim:
+                    samples = diffusion.ddim_p_sample_loop(genshape, params.ddimsteps, params.eta, params.taumode, label)
+                else:
+                    samples = diffusion.p_sample_loop(genshape, label)
+                # after sample_loop, the data belongs to [-1, 1], and needs to be transformed to [0, 1]
+                samples = samples / 2 + 0.5
+                # samples = samples.reshape(params.numlabel, params.numgen, 3, 32, 32).contiguous()
+                save_image(samples, os.path.join(params.samplepath, f'generated_{epc + 1}_{now}.png'), nrow=params.numgen)
+            mpath = os.path.join(params.modelpath, f'{epc + 1}_{now}.pt')
             torch.save({
                 'epoch': epc,
                 'model': diffusion.model.state_dict(),
@@ -62,6 +78,7 @@ def train(params:argparse.Namespace):
                 'lr': params.lr,
                 'loss': loss.item()
             }, mpath)
+        torch.cuda.empty_cache()
 
 def str2bool(s:str) -> bool:
     if isinstance(s, bool):
@@ -78,8 +95,12 @@ def main():
     parser.add_argument('--lr', type=float, default=2e-4, help='learning rate')
     parser.add_argument('--epoch', type=int, default=1000, help='epoch')
     parser.add_argument('--datapath', type=str, default='../datasets', help='data path')
-    parser.add_argument('--modeldir', type=str, default='../pt', help='saved-model path')
+    parser.add_argument('--modelpath', type=str, default='../pt', help='saved-model path')
+    parser.add_argument('--samplepath', type=str, default='../samples', help='')
     parser.add_argument('--uncondrate', type=float, default=0.1, help='rate of training without condition for classifier-free guidance')
+    parser.add_argument('--interval', type=int, default=100, help='epoch interval between two evaluations')
+    parser.add_argument('--numgen', type=int, default=10, help='the number of samples for each label')
+    parser.add_argument('--numlabel', type=int, default=10, help='num of labels')
     # diffusion params
     parser.add_argument('--dtype', default=torch.float32)
     parser.add_argument('--T', type=int, default=1000, help='total timesteps for diffusion')
@@ -96,7 +117,6 @@ def main():
     parser.add_argument('--chmul', type=list, default=[1,2,4,8], help='architecture parameters training UNet')
     parser.add_argument('--numres', type=int, default=2, help='number of ResBlock+AttnBlock for each block in UNet')
     parser.add_argument('--cdim', type=int, default=10, help='dimension of conditional embedding')
-    parser.add_argument('--numlable', type=int, default=10, help='num of labels')
     parser.add_argument('--useconv', type=str2bool, default=True, help='whether Conv2d is used in downsample, if not MaxPool2d is used')
     parser.add_argument('--droprate', type=float, default=0.1, help='dropout rate for ResBlock')
     

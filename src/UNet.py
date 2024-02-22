@@ -25,13 +25,13 @@ class TimestepEmbedding(nn.Module):
         return self.timesteps_emb_seq(emb)
 
 class ConditionalEmbedding(nn.Module):
-    def __init__(self, model_ch:int, num_lables:int, out_ch:int):
+    def __init__(self, model_ch:int, num_labels:int, out_ch:int):
         super().__init__()
         self.model_ch = model_ch
         self.out_ch = out_ch
-        self.num_lables = num_lables
+        self.num_labels = num_labels
         self.conditional_emb_seq = nn.Sequential(
-            nn.Embedding(num_lables+1, model_ch, padding_idx=0),
+            nn.Embedding(num_labels+1, model_ch, padding_idx=0),
             nn.Linear(model_ch, out_ch),
             nn.SiLU(),
             nn.Linear(out_ch, out_ch)
@@ -147,7 +147,7 @@ class AttentionBlock(nn.Module):
         return x + h
 
 class UNet(nn.Module):
-    def __init__(self, in_ch=3, model_ch=64, out_ch=3, ch_mul=[1,2,4,8], num_res_blocks=2, cdim=10, num_lables=10, use_conv=True, droprate=0.1, dtype=torch.float32):
+    def __init__(self, in_ch=3, model_ch=64, out_ch=3, ch_mul=[1,2,4,8], num_res_blocks=2, cdim=10, num_labels=10, use_conv=True, droprate=0.1, dtype=torch.float32):
         super().__init__()
         self.in_ch, self.out_ch = in_ch, out_ch
         self.model_ch = model_ch
@@ -159,7 +159,7 @@ class UNet(nn.Module):
         self.dtype = dtype
         tc_dim = model_ch * 4
         self.temb_block = TimestepEmbedding(model_ch, tc_dim)
-        self.cemb_block = ConditionalEmbedding(cdim, num_lables, tc_dim)
+        self.cemb_block = ConditionalEmbedding(cdim, num_labels, tc_dim)
         #Initial Conv
         self.downblocks = nn.ModuleList([
             MySequential(nn.Conv2d(in_ch, model_ch, kernel_size=3, padding=1))
