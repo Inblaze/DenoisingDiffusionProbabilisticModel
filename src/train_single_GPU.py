@@ -69,7 +69,7 @@ def train(params:argparse.Namespace):
                 # after sample_loop, the data belongs to [-1, 1], and needs to be transformed to [0, 1]
                 samples = samples / 2 + 0.5
                 # samples = samples.reshape(params.numlabel, params.numgen, 3, 32, 32).contiguous()
-                save_image(samples, os.path.join(params.samplepath, f'generated_{epc + 1}_{now}.png'), nrow=params.numgen)
+                save_image(samples, os.path.join(params.samplepath, f'{epc + 1}_{now}.png'), nrow=params.numgen)
             mpath = os.path.join(params.modelpath, f'{epc + 1}_{now}.pt')
             torch.save({
                 'epoch': epc,
