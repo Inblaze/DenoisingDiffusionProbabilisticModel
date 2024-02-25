@@ -1,9 +1,9 @@
 data/
 datasets/
-saves/
+samples/
 src/__pycache__/
 logs/
-out/
+pt/
 src/myDataset.py
 src/scratch.py
 

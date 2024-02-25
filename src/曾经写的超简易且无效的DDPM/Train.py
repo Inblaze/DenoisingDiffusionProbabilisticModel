@@ -61,7 +61,7 @@ if __name__ == '__main__':
                 print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
             # print(f"Epoch {epoch} | step {step:03d} Loss: {loss.item()} ")
         logger.add_scalar("Mean Loss", tot_loss / num_batch, epoch)
-
+	logger.close()
     now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     torch.save(model, "../saves/{}.pth".format(now))
     model.eval()

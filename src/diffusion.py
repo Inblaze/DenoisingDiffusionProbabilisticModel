@@ -22,7 +22,7 @@ class GaussianDiffusion(nn.Module):
         self.one_minus_alpha = 1 - self.alphas
         self.alpha_bar_prev = F.pad(self.alpha_bar[:-1], [1,0], 'constant', self.alpha_bar[0])
         self.one_minus_alpha_bar_prev = 1 - self.alpha_bar_prev
-        self.tilde_betas = self.betas * self.one_minus_alphas_bar_prev / self.one_minus_alphas_bar
+        self.tilde_betas = self.betas * self.one_minus_alpha_bar_prev / self.one_minus_alpha_bar
         self.vars = torch.cat((self.tilde_betas[1:2], self.betas[1:]), 0)
 
     @staticmethod

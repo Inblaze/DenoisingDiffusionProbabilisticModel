@@ -10,6 +10,7 @@ from utils import get_betas
 from UNet import UNet
 from datetime import datetime
 import os
+from torch.utils.tensorboard import SummaryWriter
 
 def train(params:argparse.Namespace):
     dataloader = get_dataloader(params.batchsize, params.datapath)
@@ -39,6 +40,7 @@ def train(params:argparse.Namespace):
         lr = params.lr,
         weight_decay = 1e-4
     )
+    logger = SummaryWriter(params.logpath)
     for epc in tqdm(range(params.epoch), desc='Epoch', position=0, leave=False, dynamic_ncols=True):
         diffusion.model.train()
         tot_loss = 0
@@ -52,6 +54,7 @@ def train(params:argparse.Namespace):
             optimizer.step()
             tot_loss += loss.item()
         if (epc + 1) % 10 == 0:
+            logger.add_scalar('Total Loss', tot_loss, epc+1)
             tqdm.write(f"Epoch {epc + 1} Loss: {tot_loss}")
         if (epc + 1) % 100 == 0:
             diffusion.model.eval()
@@ -79,6 +82,7 @@ def train(params:argparse.Namespace):
                 'loss': loss.item()
             }, mpath)
         torch.cuda.empty_cache()
+    logger.close()
 
 def str2bool(s:str) -> bool:
     if isinstance(s, bool):
@@ -101,6 +105,7 @@ def main():
     parser.add_argument('--interval', type=int, default=100, help='epoch interval between two evaluations')
     parser.add_argument('--numgen', type=int, default=10, help='the number of samples for each label')
     parser.add_argument('--numlabel', type=int, default=10, help='num of labels')
+    parser.add_argument('--logpath', type=str, default='../logs', help='log path')
     # diffusion params
     parser.add_argument('--dtype', default=torch.float32)
     parser.add_argument('--T', type=int, default=1000, help='total timesteps for diffusion')
@@ -118,7 +123,7 @@ def main():
     parser.add_argument('--numres', type=int, default=2, help='number of ResBlock+AttnBlock for each block in UNet')
     parser.add_argument('--cdim', type=int, default=10, help='dimension of conditional embedding')
     parser.add_argument('--useconv', type=str2bool, default=True, help='whether Conv2d is used in downsample, if not MaxPool2d is used')
-    parser.add_argument('--droprate', type=float, default=0.1, help='dropout rate for ResBlock')
+    parser.add_argument('--droprate', type=float, default=0.0, help='dropout rate for ResBlock')
     
     args = parser.parse_args()
     train(args)
