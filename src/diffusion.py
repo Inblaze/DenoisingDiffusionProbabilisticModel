@@ -73,7 +73,7 @@ class GaussianDiffusion(nn.Module):
     
     def p_sample_loop(self, x_shape:tuple, c:torch.Tensor) -> torch.Tensor:
         x_t = torch.randn(x_shape, device=self.dvc)
-        t = torch.ones([x_shape[0]], device=self.dvc) * self.T
+        t = torch.ones([x_shape[0]], device=self.dvc, dtype=torch.long) * self.T
         for _ in tqdm(range(self.T), desc='Sampling'):
             t -= 1
             with torch.no_grad():
@@ -118,7 +118,7 @@ class GaussianDiffusion(nn.Module):
             tseq = list(np.linspace(0, np.sqrt(self.T-1), num_steps) ** 2).astype(int)
             tseq[-1] = self.T - 1
         x_t = torch.randn(x_shape, device=self.dvc)
-        ones = torch.ones([x_t.shape[0]], device=self.dvc)
+        ones = torch.ones([x_t.shape[0]], device=self.dvc, dtype=torch.long)
         for i in tqdm(range(num_steps)):
             with torch.no_grad():
                 t = ones * tseq[-1-i]
