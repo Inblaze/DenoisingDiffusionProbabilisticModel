@@ -37,27 +37,49 @@ Train: `python train.py [args]`
 > diffusion model training
 >
 > options:
+>
 >   -h, --help    show this help message and exit
+>
 >   --batchsize    batch size for training
+>
 >   --lr    learning rate
+>
 >   --epoch    epoch
+>
 >   --datadir    data directory
+>
 >   --modeldir    saved-model directory
+>
 >   --sampledir    sample directory
+>
 >   --uncondrate    rate of training without condition for classifier-free guidance
+>
 >   --numgen    the number of samples for each label
+>
 >   --numlabel    num of labels
+>
 >   --logdir    log directory
+>
 >   --T    total timesteps for diffusion
+>
 >   --betamode    noise schedule mode: cosine or linear
+>
 >   --w    hyperparameters for classifier-free guidance strength
+>
 >   --ddim    whether DDIM is used in sampling. If not, DDPM is used.
+>
 >   --eta    eta for variance during DDIM sampling process
+>
 >   --taumode    sub-sequence selection for reverse process in DDIM, which should be 'linear' or 'quadratic'
+>
 >   --ddimsteps    sampling steps for DDIM
+>
 >   --modelch    model channels for UNet
+>
 >   --chmul    architecture parameters training UNet
+>
 >   --numres    number of ResBlock+AttnBlock for each block in UNet
+>
 >   --dropout    dropout rate for ResBlock
 
 Eval: `python eval.py [args]`
@@ -69,22 +91,39 @@ Specify your model path by joining `--modeldir` and `--modelfilename`
 > diffusion model evaluation
 >
 > options:
+>
 >   -h, --help    show this help message and exit
+>
 >   --modeldir    saved-model directory
+>
 >   --modelfilename    saved-model filename
+>
 >   --sampledir    sample directory
+>
 >   --numgen    the number of samples for each label
+>
 >   --numlabel    num of labels
+>
 >   --T    total timesteps for diffusion
+>
 >   --betamode    noise schedule mode: cosine or linear
+>
 >   --w    hyperparameters for classifier-free guidance strength
+>
 >   --ddim    whether DDIM is used in sample, if not DDPM is used
+>
 >   --eta    eta for variance during DDIM sampling process
+>
 >   --taumode    sub-sequence selection for reverse process in DDIM, which should be 'linear' or 'quadratic'
+>
 >   --ddimsteps DDIMSTEPS    sampling steps for DDIM
+>
 >   --modelch    model channels for UNet
+>
 >   --chmul    architecture parameters training UNet
+>
 >   --numres    number of ResBlock+AttnBlock for each block in UNet
+>
 >   --dropout    dropout rate for ResBlock
 
 ## Some Results
