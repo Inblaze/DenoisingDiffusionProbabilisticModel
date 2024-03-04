@@ -1,11 +1,7 @@
 data/
 datasets/
-samples/
 src/__pycache__/
-logs/
 pt/
-src/myDataset.py
-src/scratch.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

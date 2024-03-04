@@ -53,13 +53,13 @@ $$
 
 > 此处符号保持与DDPM一致，因此和DDIM论文中的公式略有不同。
 >
-> DDIM原论文中的$\bar{\alpha}$为DDPM中的$\alpha$
+> DDIM原论文中的$\alpha$为DDPM中的$\bar{\alpha}$
 
 去噪公式：
 $$
 \boldsymbol{x}_{\tau_{i}-1} = 
-\sqrt{\alpha_{\tau_{i}-1}}(\underbrace{\frac{\boldsymbol{x}_{\tau_{i}} - \sqrt{1-\bar{\alpha}_{\tau_{i}}}\boldsymbol{\epsilon}_{\theta}(\boldsymbol{x}_{\tau_{i}},\tau_{i})}{\sqrt{\bar{\alpha}_{\tau_{i}}}}}_{predicted\ \boldsymbol{x}_{0}}) 
-+ \underbrace{\sqrt{1-\alpha_{\tau_{i}-1}-\sigma_{\tau_{i}}^2} \boldsymbol{\epsilon}_{\theta}(\boldsymbol{x}_{\tau_{i}},\tau_{i})}_{direction\ pointing\ to\ \boldsymbol{x}_{\tau_{i}}}
+\sqrt{\bar{\alpha}_{\tau_{i}-1}}(\underbrace{\frac{\boldsymbol{x}_{\tau_{i}} - \sqrt{1-\bar{\alpha}_{\tau_{i}}}\boldsymbol{\epsilon}_{\theta}(\boldsymbol{x}_{\tau_{i}},\tau_{i})}{\sqrt{\bar{\alpha}_{\tau_{i}}}}}_{predicted\ \boldsymbol{x}_{0}}) 
++ \underbrace{\sqrt{1-\bar{\alpha}_{\tau_{i}-1}-\sigma_{\tau_{i}}^2} \boldsymbol{\epsilon}_{\theta}(\boldsymbol{x}_{\tau_{i}},\tau_{i})}_{direction\ pointing\ to\ \boldsymbol{x}_{\tau_{i}}}
 + \sigma_{\tau_{i}}\boldsymbol{z}
 $$
 其中的$\{\tau_{i}\}$为DDIM加速后的时间步序列（根据加速后的总时间步对原来的时间序列进行线性选择或平方选择）
@@ -68,7 +68,7 @@ $$
 $$
 \sigma_{\tau_{i}}=\eta \sqrt{\frac{1 - \bar{\alpha}_{\tau_{i}-1}}{1-\bar{\alpha}_{\tau_{i}}}(1-\frac{\bar{\alpha}_{\tau_{i}}}{\bar{\alpha}_{_{\tau_{i}-1}}})}
 $$
-其中$\eta$为hyperparameter，$\eta \in [0,1]$，当$\eta = 1$时DDIM退化成DDPM，当$\eta = 0$时去噪过程完全确定（初步的纯高斯噪声确定，生成的图像就确定了）
+其中$\eta$为hyperparameter，$\eta \in [0,1]$，当$\eta = 1$时DDIM退化成DDPM，当$\eta = 0$时去噪过程完全确定（即初步的纯高斯噪声确定，生成的图像就确定了）
 
 ### Conditional Diffusion Models
 

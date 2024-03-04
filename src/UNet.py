@@ -1,237 +1,316 @@
+import math
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from abc import abstractmethod
+from torch import nn
+from torch.nn import functional as F
+
+class Swish(nn.Module):
+    def forward(self, x:torch.Tensor):
+        return x * torch.sigmoid(x)
+
 
 class TimestepEmbedding(nn.Module):
-    def __init__(self, model_ch:int, out_ch:int):
+    def __init__(self,
+                 T:int,
+                 d_model:int,
+                 dim:int):
+        assert d_model % 2 == 0
         super().__init__()
-        assert model_ch % 2 == 0
-        self.model_ch, self.out_ch = model_ch, out_ch
-        self.timesteps_emb_seq = nn.Sequential(
-            nn.Linear(model_ch, out_ch),
-            nn.SiLU(),
-            nn.Linear(out_ch, out_ch)
+        emb = torch.arange(0, d_model, step=2) / d_model * math.log(10000)
+        emb = torch.exp(-emb)
+        pos = torch.arange(T).float()
+        emb = pos[:, None] * emb[None, :]
+        assert list(emb.shape) == [T, d_model // 2]
+        emb = torch.stack([torch.sin(emb), torch.cos(emb)], dim=-1)
+        assert list(emb.shape) == [T, d_model // 2, 2]
+        emb = emb.view(T, d_model)
+
+        self.timembedding = nn.Sequential(
+            nn.Embedding.from_pretrained(emb, freeze=False),
+            nn.Linear(d_model, dim),
+            Swish(),
+            nn.Linear(dim, dim),
         )
 
-    def forward(self, t:torch.Tensor) -> torch.Tensor:
-        """
-        :param t: 1-D Tensor of N indices, one per batch
-        """
-        half_ch = self.model_ch // 2
-        emb = torch.exp(-torch.log(torch.Tensor([10000])) * torch.arange(half_ch, dtype=torch.float32) / (half_ch - 1)).to(t.device)
-        emb = t[:, None].float() * emb[None, :]
-        emb = torch.cat([torch.cos(emb), torch.sin(emb)], dim=-1)
-        return self.timesteps_emb_seq(emb)
+    def forward(self, t:torch.Tensor):
+        emb = self.timembedding(t)
+        return emb
+
 
 class ConditionalEmbedding(nn.Module):
-    def __init__(self, model_ch:int, num_labels:int, out_ch:int):
+    def __init__(self,
+                 num_labels:int,
+                 d_model:int,
+                 dim:int):
+        assert d_model % 2 == 0
         super().__init__()
-        self.model_ch = model_ch
-        self.out_ch = out_ch
-        self.num_labels = num_labels
-        self.conditional_emb_seq = nn.Sequential(
-            nn.Embedding(num_labels+1, model_ch, padding_idx=0),
-            nn.Linear(model_ch, out_ch),
-            nn.SiLU(),
-            nn.Linear(out_ch, out_ch)
+        self.condEmbedding = nn.Sequential(
+            nn.Embedding(num_embeddings=num_labels+1, embedding_dim=d_model, padding_idx=0),
+            nn.Linear(d_model, dim),
+            Swish(),
+            nn.Linear(dim, dim),
         )
-    
-    def forward(self, c:torch.Tensor) -> torch.Tensor:
-        """
-        :param c: 1-D Tensor of N indices, one per batch
-        """
-        return self.conditional_emb_seq(c) 
+
+    def forward(self, t:torch.Tensor):
+        emb = self.condEmbedding(t)
+        return emb
+
 
 class DownSample(nn.Module):
-    def __init__(self, in_ch:int, out_ch:int, use_conv=True):
+    def __init__(self, in_ch:int):
         super().__init__()
-        self.in_ch, self.out_ch = in_ch, out_ch
-        self.use_conv = use_conv
-        if use_conv:
-            self.layer = nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1)
-        else:
-            self.layer = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.seq = nn.Sequential(
+            nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=2, padding=1),
+            nn.GroupNorm(32, in_ch),
+            Swish(),
+            nn.Conv2d(in_ch, in_ch, kernel_size=3, padding=1),
+            nn.GroupNorm(32, in_ch)
+        )
 
-    def forward(self, x:torch.Tensor) -> torch.Tensor:
-        assert x.shape[1] == self.in_ch, f'x and upsampling layer({self.in_ch}->{self.out_ch}) does NOT match.'
-        return self.layer(x)    
+    def forward(self,
+                x:torch.Tensor,
+                temb:torch.Tensor,
+                cemb:torch.Tensor):
+        # x = self.c1(x) + self.c2(x)
+        return self.seq(x)
+
 
 class UpSample(nn.Module):
-    def __init__(self, in_ch:int, out_ch:int, scale_factor=2):
+    def __init__(self, in_ch:int):
         super().__init__()
-        self.in_ch, self.out_ch = in_ch, out_ch
-        self.scale_factor = scale_factor
-        self.conv = nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1)
-
-    def forward(self, x:torch.Tensor) -> torch.Tensor:
-        x = F.interpolate(x, scale_factor=self.scale_factor)
-        return self.conv(x)
-    
-class BlockWithEmbedment(nn.Module):
-    @abstractmethod
-    def forward(self, x, temb, cemb):
-        """
-        abstract method
-        """
-
-class MySequential(nn.Sequential, BlockWithEmbedment):
-    def forward(self, x:torch.Tensor, temb:torch.Tensor, cemb:torch.Tensor) -> torch.Tensor:
-        for layer in self:
-            if isinstance(layer, BlockWithEmbedment):
-                x = layer(x, temb, cemb)
-            else:
-                x = layer(x)
-        return x
-
-class ResidualBlock(BlockWithEmbedment):
-    def __init__(self, in_ch:int, out_ch:int, temb_ch:int, cemb_ch:int, droprate=0.0):
-        super().__init__()
-        self.in_ch, self.out_ch = in_ch, out_ch
-        self.temb_ch, self.cemb_ch = temb_ch, cemb_ch
-        self.droprate = droprate
-        self.block1 = nn.Sequential(
+        self.seq = nn.Sequential(
+            nn.ConvTranspose2d(in_ch, in_ch, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.GroupNorm(32, in_ch),
-            nn.SiLU(),
-            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1)
+            Swish(),
+            nn.Conv2d(in_ch, in_ch, kernel_size=3, stride=1, padding=1),
+            nn.GroupNorm(32, in_ch)
         )
-        self.temb_proj = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(temb_ch, out_ch)
-        )
-        self.cemb_proj = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(cemb_ch, out_ch)
-        )
-        self.block2 = nn.Sequential(
-            nn.GroupNorm(32, out_ch),
-            nn.SiLU(),
-            nn.Dropout(p=droprate),
-            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1)
-        )
-        if in_ch == out_ch:
-            self.residual = nn.Identity()
-        else:
-            self.residual = nn.Conv2d(in_ch, out_ch, kernel_size=1)
 
-    def forward(self, x:torch.Tensor, temb:torch.Tensor, cemb:torch.Tensor) -> torch.Tensor:
-        latent = self.block1(x)
-        latent += self.temb_proj(temb)[:, :, None, None]
-        latent += self.cemb_proj(cemb)[:, :, None, None]
-        latent = self.block2(latent)
-        return latent + self.residual(x)
+    def forward(self,
+                x:torch.Tensor,
+                temb:torch.Tensor,
+                cemb:torch.Tensor):
+        _, _, H, W = x.shape
+        return self.seq(x)
+
 
 class AttentionBlock(nn.Module):
-    def __init__(self, channels:int):
+    def __init__(self, in_ch:torch.Tensor):
         super().__init__()
-        self.channels = channels
-        self.norm = nn.GroupNorm(32, channels)
-        self.proj_q = nn.Conv2d(channels, channels, 1)
-        self.proj_k = nn.Conv2d(channels, channels, 1)
-        self.proj_v = nn.Conv2d(channels, channels, 1)
-        self.proj = nn.Conv2d(channels, channels, 1)
+        self.group_norm = nn.GroupNorm(32, in_ch)
+        self.proj_q = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        self.proj_k = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        self.proj_v = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
+        self.proj = nn.Conv2d(in_ch, in_ch, 1, stride=1, padding=0)
 
-    def forward(self, x:torch.Tensor) -> torch.Tensor:
-        N, C, H, W = x.shape
-        h = self.norm(x)
-        q, k, v = self.proj_q(h), self.proj_k(h), self.proj_v(h)
-        q = q.permute(0, 2, 3, 1).reshape(N, H*W, C)
-        k = k.reshape(N, C, H*W)
-        w = torch.bmm(q, k) * (C ** (-0.5))
+    def forward(self,
+                x:torch.Tensor,
+                t:torch.Tensor,
+                c:torch.Tensor):
+        B, C, H, W = x.shape
+        h = self.group_norm(x)
+        q = self.proj_q(h)
+        k = self.proj_k(h)
+        v = self.proj_v(h)
+
+        q = q.permute(0, 2, 3, 1).view(B, H * W, C)
+        k = k.view(B, C, H * W)
+        w = torch.bmm(q, k) * (int(C) ** (-0.5))
+        assert list(w.shape) == [B, H * W, H * W]
         w = F.softmax(w, dim=-1)
-        v = v.permute(0, 2, 3, 1).reshape(N, H*W, C)
+
+        v = v.permute(0, 2, 3, 1).view(B, H * W, C)
         h = torch.bmm(w, v)
-        assert list(h.shape) == [N, H*W, C]
-        h = h.reshape(N, H, W, C).permute(0, 3, 1, 2)
+        assert list(h.shape) == [B, H * W, C]
+        h = h.view(B, H, W, C).permute(0, 3, 1, 2)
+        h = self.proj(h)
+
+        return x + h
+    
+class MultiheadAttentionBlock(nn.Module):
+    def __init__(self,
+                 in_dim:torch.Tensor,
+                 num_heads:int = 3,
+                 qkdim:int = None,
+                 vdim:int = None):
+        super().__init__()
+        self.in_dim = in_dim
+        self.num_heads = num_heads
+        if qkdim == None:
+            self.qkdim = in_dim
+        if vdim == None:
+            self.vdim = in_dim
+        self.group_norm = nn.GroupNorm(32, in_dim)
+        self.proj_q = nn.Conv2d(in_dim, self.qkdim * num_heads, 1)
+        self.proj_k = nn.Conv2d(in_dim, self.qkdim * num_heads, 1)
+        self.proj_v = nn.Conv2d(in_dim, self.vdim * num_heads, 1)
+        self.proj = nn.Conv2d(num_heads * self.vdim, in_dim, 1)
+
+    def forward(self,
+                x:torch.Tensor,
+                t:torch.Tensor,
+                c:torch.Tensor):
+        B, C, H, W = x.shape
+        h = self.group_norm(x)
+        q = self.proj_q(h)
+        k = self.proj_k(h)
+        v = self.proj_v(h)
+
+        q = q.reshape(B, self.num_heads, self.qkdim, H, W)
+        q = q.reshape(B, self.num_heads, self.qkdim, H*W)
+        k = k.reshape(B, self.num_heads, self.qkdim, H, W)
+        k = k.reshape(B, self.num_heads, self.qkdim, H*W)
+        w = torch.einsum('bhdi,bhdj->bhij', q, k) * (int(C) ** (-0.5))
+        assert list(w.shape) == [B, self.num_heads, H * W, H * W]
+        w = F.softmax(w, dim=-1)
+
+        v = v.reshape(B, self.num_heads, self.vdim, H, W)
+        v = v.reshape(B, self.num_heads, self.vdim, H*W)
+        h = torch.einsum('bhij,bhdj->bhdi', w, v)
+        h = h.reshape(B, self.num_heads * self.vdim, -1)
+        assert list(h.shape) == [B, self.num_heads * self.vdim, H * W]
+        h = h.reshape(B, -1, H, W)
         h = self.proj(h)
         return x + h
 
-class UNet(nn.Module):
-    def __init__(self, in_ch=3, model_ch=64, out_ch=3, ch_mul=[1,2,4,8], num_res_blocks=2, cdim=10, num_labels=10, use_conv=True, droprate=0.1, dtype=torch.float32):
-        super().__init__()
-        self.in_ch, self.out_ch = in_ch, out_ch
-        self.model_ch = model_ch
-        self.ch_mul = ch_mul
-        self.num_res_blocks = num_res_blocks
-        self.cdim = cdim
-        self.use_conv = use_conv
-        self.droprate = droprate
-        self.dtype = dtype
-        tc_dim = model_ch * 4
-        self.temb_block = TimestepEmbedding(model_ch, tc_dim)
-        self.cemb_block = ConditionalEmbedding(cdim, num_labels, tc_dim)
-        #Initial Conv
-        self.downblocks = nn.ModuleList([
-            MySequential(nn.Conv2d(in_ch, model_ch, kernel_size=3, padding=1))
-        ])
-        # DownBlocks
-        now_ch = ch_mul[0] * model_ch
-        chs = [now_ch]
-        for i, mul in enumerate(ch_mul):
-            next_ch = model_ch * mul
-            for _ in range(num_res_blocks):
-                layers = [
-                    ResidualBlock(now_ch, next_ch, tc_dim, tc_dim, droprate),
-                    AttentionBlock(next_ch)
-                ]
-                now_ch = next_ch
-                self.downblocks.append(MySequential(*layers))
-                chs.append(now_ch)
-            if i != len(ch_mul) - 1:
-            # there are only (len(ch_mul)-1) downsamples
-                self.downblocks.append(MySequential(DownSample(now_ch, now_ch, use_conv)))
-                chs.append(now_ch)
-        # MiddleBlocks
-        self.middle_blocks = MySequential(
-            ResidualBlock(now_ch, now_ch, tc_dim, tc_dim, droprate),
-            AttentionBlock(now_ch),
-            ResidualBlock(now_ch, now_ch, tc_dim, tc_dim, droprate)
-        )
-        # UpBlocks
-        self.upblocks = nn.ModuleList([])
-        for i, mul in list(enumerate(ch_mul))[::-1]:
-            next_ch = model_ch * mul
-            for _ in range(num_res_blocks):
-                layers = [
-                    ResidualBlock(now_ch+chs.pop(), next_ch, tc_dim, tc_dim, droprate),
-                    AttentionBlock(next_ch)
-                ]
-                self.upblocks.append(MySequential(*layers))
-                now_ch = next_ch
-            # ResBlock + AttnBlock + UpSample
-            layers = [
-                ResidualBlock(now_ch+chs.pop(), next_ch, tc_dim, tc_dim, droprate),
-                AttentionBlock(next_ch)
-            ]
-            now_ch = next_ch
-            if i != 0:
-                layers.append(UpSample(now_ch, now_ch))
-            self.upblocks.append(MySequential(*layers))
-        # Output Block
-        self.output_block = nn.Sequential(
-            nn.GroupNorm(32, now_ch),
-            nn.SiLU(),
-            nn.Conv2d(now_ch, out_ch, kernel_size=3, padding=1)
-        )
 
-    def forward(self, x:torch.Tensor, t:torch.Tensor, c:torch.Tensor) -> torch.Tensor:
-        temb, cemb = self.temb_block(t), self.cemb_block(c)
-        latent = x.type(self.dtype)
-        latents = []
-        for block in self.downblocks:
-            latent = block(latent, temb, cemb)
-            latents.append(latent)
-        latent = self.middle_blocks(latent, temb, cemb)
-        for block in self.upblocks:
-            latent = torch.cat([latent, latents.pop()], dim=1)
-            latent = block(latent, temb, cemb)
-        latent = latent.type(self.dtype)
-        return self.output_block(latent)
+class ResidualBlock(nn.Module):
+    def __init__(self,
+                 in_ch:int,
+                 out_ch:int,
+                 tdim:int,
+                 dropout:float):
+        super().__init__()
+        self.block1 = nn.Sequential(
+            nn.GroupNorm(32, in_ch),
+            Swish(),
+            nn.Conv2d(in_ch, out_ch, 3, stride=1, padding=1),
+        )
+        self.temb_proj = nn.Sequential(
+            Swish(),
+            nn.Linear(tdim, out_ch),
+        )
+        self.cond_proj = nn.Sequential(
+            Swish(),
+            nn.Linear(tdim, out_ch),
+        )
+        self.block2 = nn.Sequential(
+            nn.GroupNorm(32, out_ch),
+            Swish(),
+            nn.Dropout(dropout),
+            nn.Conv2d(out_ch, out_ch, 3, stride=1, padding=1),
+        )
+        if in_ch != out_ch:
+            self.out = nn.Conv2d(in_ch, out_ch, 1)
+        else:
+            self.out = nn.Identity()
+
+    def forward(self,
+                x:torch.Tensor,
+                temb:torch.Tensor,
+                c:torch.Tensor):
+        h = self.block1(x)
+        h += self.temb_proj(temb)[:, :, None, None]
+        h += self.cond_proj(c)[:, :, None, None]
+        h = self.block2(h)
+
+        h = h + self.out(x)
+        return h
+
+
+class UNet(nn.Module):
+    def __init__(self,
+                 T:int,
+                 num_labels:int,
+                 ch:int,
+                 ch_mult:list = [1, 2, 2, 2],
+                 num_res_blocks:int = 2,
+                 dropout:float = 0.0):
+        super().__init__()
+        tdim = ch * 4
+        self.time_embedding = TimestepEmbedding(T, ch, tdim)
+        self.cond_embedding = ConditionalEmbedding(num_labels, ch, tdim)
+        self.head = nn.Conv2d(3, ch, kernel_size=3, stride=1, padding=1)
+        self.downblocks = nn.ModuleList()
+        chs = [ch]  # record output channel when dowmsample for upsample
+        now_ch = ch
+        for i, mult in enumerate(ch_mult):
+            out_ch = ch * mult
+            for _ in range(num_res_blocks):
+                self.downblocks.append(ResidualBlock(in_ch=now_ch, out_ch=out_ch, tdim=tdim, dropout=dropout))
+                self.downblocks.append(AttentionBlock(out_ch))
+                # self.downblocks.append(MultiheadAttentionBlock(out_ch))
+                now_ch = out_ch
+                chs.append(now_ch)
+            if i != len(ch_mult) - 1:
+                self.downblocks.append(DownSample(now_ch))
+                chs.append(now_ch)
+
+        self.middleblocks = nn.ModuleList([
+            ResidualBlock(now_ch, now_ch, tdim, dropout),
+            AttentionBlock(now_ch),
+            # MultiheadAttentionBlock(now_ch),
+            ResidualBlock(now_ch, now_ch, tdim, dropout)
+        ])
+
+        self.upblocks = nn.ModuleList()
+        for i, mult in reversed(list(enumerate(ch_mult))):
+            out_ch = ch * mult
+            for _ in range(num_res_blocks + 1):
+                self.upblocks.append(ResidualBlock(in_ch=chs.pop() + now_ch, out_ch=out_ch, tdim=tdim, dropout=dropout))
+                self.upblocks.append(AttentionBlock(out_ch))
+                # self.upblocks.append(MultiheadAttentionBlock(out_ch))
+                now_ch = out_ch
+            if i != 0:
+                self.upblocks.append(UpSample(now_ch))
+        assert len(chs) == 0
+
+        self.out = nn.Sequential(
+            nn.GroupNorm(32, now_ch),
+            Swish(),
+            nn.Conv2d(now_ch, 3, 3, stride=1, padding=1)
+        )
+ 
+
+    def forward(self,
+                x:torch.Tensor,
+                t:torch.Tensor,
+                c:torch.Tensor):
+        # Timestep embedding
+        temb = self.time_embedding(t)
+        cemb = self.cond_embedding(c)
+        # Downsampling
+        h = self.head(x)
+        hs = [h]
+        for layer in self.downblocks:
+            h = layer(h, temb, cemb)
+            if isinstance(layer, (AttentionBlock, MultiheadAttentionBlock, DownSample)):
+                hs.append(h)
+        # Middle
+        for layer in self.middleblocks:
+            h = layer(h, temb, cemb)
+        # Upsampling
+        for layer in self.upblocks:
+            if isinstance(layer, ResidualBlock):
+                h = torch.cat([h, hs.pop()], dim=1)
+            h = layer(h, temb, cemb)
+        h = self.out(h)
+
+        assert len(hs) == 0
+        return h
+
 
 if __name__ == '__main__':
-    net = UNet()
-    for name, params in net.named_parameters():
-        print(name, ': ', params.size())
-    total_num = sum(p.numel() for p in net.parameters())
-    trainable_num = sum(p.numel() for p in net.parameters() if p.requires_grad)
-    print(f'\nTotal: {total_num}\nTrainable: {trainable_num}')
+    batch_size = 8
+    model = UNet(
+        T=1000, num_labels=10, ch=64, ch_mult=[1, 2, 2, 2],
+        num_res_blocks=2, dropout=0.1)
+    x = torch.randn(batch_size, 3, 32, 32)
+    t = torch.randint(1000, size=[batch_size])
+    c = torch.randint(10, size=[batch_size])
+    # resB = ResidualBlock(128, 256, 64, 0.1)
+    # x = torch.randn(batch_size, 128, 32, 32)
+    # t = torch.randn(batch_size, 64)
+    # c = torch.randn(batch_size, 64)
+    # y = resB(x, t, c)
+    y = model(x, t, c)
+    print(y.shape)
