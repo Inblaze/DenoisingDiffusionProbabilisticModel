@@ -18,11 +18,11 @@ This implementation is adapted from [coderpiaobozhe/classifier-free-diffusion-gu
 
 `pt`: Saved-model directory
 
-`samples`: some images sampled by the model with self-attention block
+`samples`: Some images sampled by the model with self-attention block
 
-`samples/MultiheadAttn`: some images sampled by the model with multihead-attention block
+`samples/MultiheadAttn`: Some images sampled by the model with multihead-attention block
 
-`src`: source code directory
+`src`: Source code directory
 
 ## How to Run
 
