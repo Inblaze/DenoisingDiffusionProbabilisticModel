@@ -1,6 +1,6 @@
 # Diffusion Model Notes
 
-> 本文并非严谨的数学理论分析，仅作为本人实现[Classifier-Free Diffusion Guidance](https://github.com/Inblaze/DenoiseDiffusionProbabilisticModel)后的一次理论要点笔记。
+> 本文并非严谨的数学理论分析，仅作为本人实现[Classifier-Free Diffusion Guidance](https://github.com/Inblaze/DenoisingDiffusionProbabilisticModel)后的一次理论要点笔记。
 
 ## Preface
 
