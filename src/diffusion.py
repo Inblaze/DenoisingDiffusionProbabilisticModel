@@ -145,7 +145,6 @@ class Diffusion(nn.Module):
                    x_0:torch.Tensor,
                    c:torch.Tensor) -> torch.Tensor:
         t = torch.randint(self.T, size=(x_0.shape[0], ), device=self.device)
-        eps = torch.randn_like(x_0)
         x_t, eps = self.q_sample(x_0, t)
         eps_pred = self.model(x_t, t, c)
         loss = F.mse_loss(eps_pred, eps, reduction='mean')

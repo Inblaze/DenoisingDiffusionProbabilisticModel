@@ -9,19 +9,21 @@ import argparse
 import numpy as np
 
 from diffusion import Diffusion
-from UNet import UNet
-from utils import get_betas, get_dataloader, str2bool
+from utils import get_named_beta_schedule, str2bool, get_model
+from utils import get_cifar_dataloader
+# from utils import get_agfw_dataloader
 
 def train(params:argparse.Namespace):
-    dataloader = get_dataloader(params.batchsize, params.datadir)
+    dataloader = get_cifar_dataloader(params.batchsize, params.datadir)
+    # dataloader = get_agfw_dataloader(params.batchsize, params.datadir)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = UNet(T=params.T,
-               num_labels=params.numlabel,
-               ch=params.modelch,
-               ch_mult=params.chmul,
-               num_res_blocks=params.numres,
-               dropout=params.dropout)
-    betas = get_betas(params.betamode, params.T)
+    net = get_model(T=params.T,
+                    num_labels=params.numlabel,
+                    ch=params.modelch,
+                    img_size=params.imgsz,
+                    num_res_blocks=params.numres,
+                    dropout=params.dropout)
+    betas = get_named_beta_schedule(params.betamode, params.T)
     diffusion = Diffusion(
         model = net,
         betas = betas,
@@ -46,7 +48,7 @@ def train(params:argparse.Namespace):
 
         logger.add_scalar('Total Loss', tot_loss, epc+1)
         tqdm.write(f"Epoch {epc + 1} Loss: {tot_loss}")
-        if (epc + 1) % 10 == 0:
+        if (epc + 1) % params.intvleval == 0:
             diffusion.model.eval()
             now = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
             with torch.no_grad():
@@ -54,7 +56,7 @@ def train(params:argparse.Namespace):
                     * torch.arange(1, params.numlabel+1).reshape(-1, 1)
                 label = label.reshape(-1, 1).squeeze()
                 label = label.to(device)
-                genshape = (params.numlabel * params.numgen, 3, 32, 32)
+                genshape = (params.numlabel * params.numgen, 3, params.imgsz, params.imgsz)
                 if params.ddim:
                     samples = diffusion.ddim_p_sample_loop(genshape, params.ddimsteps, params.eta, params.taumode, label)
                 else:
@@ -63,7 +65,7 @@ def train(params:argparse.Namespace):
                 samples = samples * 0.5 + 0.5
                 # samples = samples.reshape(params.numlabel, params.numgen, 3, 32, 32).contiguous()
                 save_image(samples, os.path.join(params.sampledir, f'{epc + 1}_{now}.png'), nrow=params.numgen)
-        if (epc + 1) % 100 == 0:
+        if (epc + 1) % params.intvlsave == 0:
             mpath = os.path.join(params.modeldir, f'{epc + 1}_{now}.pt')
             torch.save({
                 'epoch': epc,
@@ -78,8 +80,8 @@ def train(params:argparse.Namespace):
 def main():
     parser = argparse.ArgumentParser(description='diffusion model training')
     # train params
-    parser.add_argument('--batchsize', type=int, default=256, help='batch size for training')
-    parser.add_argument('--lr', type=float, default=2e-4, help='learning rate')
+    parser.add_argument('--batchsize', type=int, default=128, help='batch size for training')
+    parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
     parser.add_argument('--epoch', type=int, default=100, help='epoch')
     parser.add_argument('--datadir', type=str, default='../datasets', help='data directory')
     parser.add_argument('--modeldir', type=str, default='../pt', help='saved-model directory')
@@ -88,6 +90,8 @@ def main():
     parser.add_argument('--numgen', type=int, default=10, help='the number of samples for each label')
     parser.add_argument('--numlabel', type=int, default=10, help='num of labels')
     parser.add_argument('--logdir', type=str, default='../logs', help='log directory')
+    parser.add_argument('--intvleval', type=int, default=10, help='interval of evaluation')
+    parser.add_argument('--intvlsave', type=int, default=100, help='interval of saving model')
     # diffusion params
     parser.add_argument('--T', type=int, default=1000, help='total timesteps for diffusion')
     parser.add_argument('--betamode', type=str, default='linear', help='noise schedule mode: cosine or linear')
@@ -100,7 +104,8 @@ def main():
     # parser.add_argument('--inch',type=int,default=3,help='input channels for UNet')
     # parser.add_argument('--outch', type=int, default=3, help='output channels for UNet')
     parser.add_argument('--modelch', type=int, default=64, help='model channels for UNet')
-    parser.add_argument('--chmul', type=list, default=[1,2,2,2], help='architecture parameters training UNet')
+    parser.add_argument('--imgsz', type=int, default=32, help='image size')
+    # parser.add_argument('--chmul', type=list, default=[1,2,2,2], help='architecture parameters training UNet')
     parser.add_argument('--numres', type=int, default=2, help='number of ResBlock+AttnBlock for each block in UNet')
     parser.add_argument('--dropout', type=float, default=0.15, help='dropout rate for ResBlock')
     

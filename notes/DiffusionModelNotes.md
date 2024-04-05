@@ -97,7 +97,7 @@ $$
 $$
 其中$\boldsymbol{\epsilon}_{\theta}(\boldsymbol{x}_{t},t,y)$为带条件U-Net预测的噪声，$\boldsymbol{\epsilon}_{\theta}(\boldsymbol{x}_{t},t)$为无条件U-Net预测的噪声。无条件U-Net和带条件U-Net可以同时训练，只需要在每次输入的训练数据中随机抽取一部分将他们的条件$y$置为0或None就行了。
 
-$w$，即*Guidance Strength*，是一个非负的hyperparameter，$w=0$ refers to no-guided models，论文中在0.3处得到了最佳FID，在4.0处得到了最佳IS。
+$w$，即*Guidance Scale*，是一个非负的hyperparameter，$w=0$ refers to no-guidance models，论文中在0.3处得到了最佳FID，在4.0处得到了最佳IS。
 
 > 此处我不禁产生一个疑问：为什么要给带条件噪声和无条件噪声都乘上权重呢？众所周知Classifier-Free可以基于Classifier-Guidance推出，即将分类器梯度用贝叶斯公式展开，得到的结果直接代入会发现根本没有权重，新的噪声就等于$\boldsymbol{\epsilon}_{\theta}(\boldsymbol{x}_{t},t,y)$。那么我直接只训练一个带条件的U-Net预测噪声不就行了吗？为啥还要带无条件生成的噪声呢？
 
